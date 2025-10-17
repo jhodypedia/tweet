@@ -1,0 +1,62 @@
+:root{
+  --bg:#0f1419;
+  --card:#151c24;
+  --glass: rgba(21,28,36,.6);
+  --border:#24313e;
+  --fg:#e7e9ea;
+  --brand:#1d9bf0;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  overflow-x: hidden;
+}
+
+/* Aurora background */
+.bg-aurora{
+  position: fixed; inset: -20% -20% auto -20%;
+  height: 80vh; z-index: -1;
+  background: radial-gradient(60% 60% at 20% 20%, rgba(29,155,240,.25), transparent 60%),
+              radial-gradient(60% 60% at 80% 30%, rgba(29,240,163,.18), transparent 60%),
+              radial-gradient(50% 50% at 50% 80%, rgba(240,29,176,.12), transparent 60%);
+  filter: blur(30px);
+  animation: floaty 14s ease-in-out infinite alternate;
+}
+@keyframes floaty{to{transform: translateY(-30px) scale(1.02)}}
+
+/* Glass & card */
+.glassy{
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  backdrop-filter: blur(6px);
+}
+
+.elevate{box-shadow: 0 10px 30px rgba(0,0,0,.25)}
+.navbar{background: rgba(17,21,26,.6)}
+
+/* Avatar glow */
+.avatar-glow{
+  width:48px;height:48px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background: linear-gradient(145deg, rgba(29,155,240,.15), rgba(29,155,240,.05));
+  box-shadow: 0 0 24px rgba(29,155,240,.25);
+}
+
+/* Buttons animation */
+.pulse{
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse{
+  0%{transform:translateZ(0); box-shadow:0 0 0 0 rgba(29,155,240,.6)}
+  70%{box-shadow:0 0 0 16px rgba(29,155,240,0)}
+  100%{box-shadow:0 0 0 0 rgba(29,155,240,0)}
+}
+
+/* Appear animation hooks */
+[data-animate]{opacity:0; transform: translateY(10px); transition: all .6s ease}
+[data-animate].show{opacity:1; transform:none}
