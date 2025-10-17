@@ -199,7 +199,7 @@ app.post("/logout", (req, res) => {
 });
 
 // =====================================================
-// 🗑 DELETE ALL TWEETS (RATE LIMIT SAFE)
+// 🗑 DELETE ALL TWEETS (FULL RATE LIMIT HANDLER)
 // =====================================================
 app.post("/delete/start", ensureAuth, async (req, res) => {
   try {
@@ -260,15 +260,28 @@ app.post("/delete/start", ensureAuth, async (req, res) => {
               headers: { Authorization: `Bearer ${access_token}` }
             });
             job.deleted++;
-            await sleep(1500); // delay per tweet
+            await sleep(2000); // delay antar tweet
           } catch (err) {
             const status = err.response?.status;
             console.log("Delete failed:", id, status);
+
+            // === RATE LIMIT HANDLING ===
             if (status === 429) {
-              console.log("Rate limit reached, pausing 2 minutes...");
-              await sleep(120000); // 2 minutes cooldown
+              const resetHeader = err.response?.headers?.["x-rate-limit-reset"];
+              let waitMs = 15 * 60 * 1000; // default 15 menit
+              if (resetHeader) {
+                const resetMs = Number(resetHeader) * 1000 - Date.now();
+                if (resetMs > 0) waitMs = resetMs + 5000;
+              }
+              const waitMin = Math.round(waitMs / 60000);
+              console.log(`🚦 Rate limit reached. Waiting ${waitMin} minutes…`);
+              job.status = "waiting_limit";
+              await sleep(waitMs);
+              job.status = "running";
               continue;
             }
+
+            // error lain → skip
             await sleep(1000);
           }
         }
@@ -302,7 +315,8 @@ app.get("/delete/status", ensureAuth, (req, res) => {
     status: job.status,
     total: job.total,
     deleted: job.deleted,
-    error: job.error
+    error: job.error,
+    waiting: job.status === "waiting_limit"
   });
 });
 
