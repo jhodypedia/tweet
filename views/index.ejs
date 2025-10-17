@@ -1,0 +1,24 @@
+<% layout('layout') -%>
+<section class="row g-4 align-items-center">
+  <div class="col-12 col-lg-6">
+    <div class="card glassy p-4 elevate" data-animate="fade-up">
+      <h1 class="display-6 fw-bold mb-3">Login with X</h1>
+      <p class="text-secondary">Autentikasi aman dengan OAuth 2.0 + PKCE. Setelah login, kamu bisa pakai tools manajemen tweet di dashboard.</p>
+      <% if (!isAuthed) { %>
+        <a href="/login" class="btn btn-primary btn-lg pulse"><i class="fa-brands fa-x-twitter me-2"></i> Login with X</a>
+      <% } else { %>
+        <a href="/dashboard" class="btn btn-success btn-lg"><i class="fa-solid fa-gauge me-2"></i> Buka Dashboard</a>
+      <% } %>
+    </div>
+  </div>
+  <div class="col-12 col-lg-6">
+    <div class="card glassy p-4" data-animate="fade-in">
+      <h2 class="h4 mb-3"><i class="fa-solid fa-shield-halved me-2"></i> Fitur Keamanan</h2>
+      <ul class="list-unstyled m-0">
+        <li class="mb-2"><i class="fa-regular fa-circle-check text-success me-2"></i> PKCE + State anti-CSRF</li>
+        <li class="mb-2"><i class="fa-regular fa-circle-check text-success me-2"></i> Session secure cookie</li>
+        <li class="mb-2"><i class="fa-regular fa-circle-check text-success me-2"></i> Scope minimal & refresh token</li>
+      </ul>
+    </div>
+  </div>
+</section>
