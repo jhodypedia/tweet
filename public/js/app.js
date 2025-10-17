@@ -1,11 +1,11 @@
 // Simple appear-on-scroll animation (no external lib)
-(function(){
-  const io = new IntersectionObserver(entries=>{
-    entries.forEach(e=>{
-      if(e.isIntersecting) e.target.classList.add('show');
-    })
-  }, { threshold:.15 });
-  document.querySelectorAll('[data-animate]').forEach(el=>io.observe(el));
+(() => {
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) e.target.classList.add('show');
+    });
+  }, { threshold: .15 });
+  document.querySelectorAll('[data-animate]').forEach(el => io.observe(el));
 })();
 
 $(function(){
@@ -28,76 +28,65 @@ $(function(){
         </div>
       `,
       allowOutsideClick: false,
-      didOpen: () => Swal.showLoading(),
+      showConfirmButton: false,
       showCancelButton: true,
-      cancelButtonText: 'Tutup'
-    }).then(res=>{
-      // if dialog closed while running, keep polling in background (optional).
+      cancelButtonText: 'Tutup',
+      didOpen: () => {
+        Swal.showLoading();
+      },
+      willClose: () => {
+        // stop polling if modal manually closed
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      }
     });
   }
 
   function updateBar(deleted, total){
-    const pct = total ? Math.floor((deleted/total)*100) : 0;
+    const pct = total ? Math.floor((deleted / total) * 100) : 0;
     $('#swal-deleted').text(deleted);
     $('#swal-percent').text(pct);
     $('#swal-bar').css('width', pct + '%');
-  }
-
-  function beginPolling(){
-    $('#btnCancel').prop('disabled', false);
-    pollTimer = setInterval(async ()=>{
-      try{
-        const q = $.param({ jobId: currentJobId });
-        const st = await $.getJSON('/delete/status?'+q);
-        if (!st.ok) return;
-
-        updateBar(st.deleted, st.total);
-
-        if (st.status === 'done'){
-          clearInterval(pollTimer); pollTimer=null; currentJobId=null;
-          $('#btnCancel').prop('disabled', true);
-          Swal.hideLoading();
-          Swal.update({
-            icon: 'success',
-            title: 'Selesai',
-            html: `<div class="text-start">Berhasil menghapus <b>${st.deleted}</b> dari <b>${st.total}</b> tweet.</div>`,
-            showCancelButton: false,
-            showConfirmButton: true
-          });
-        } else if (st.status === 'error'){
-          clearInterval(pollTimer); pollTimer=null; currentJobId=null;
-          $('#btnCancel').prop('disabled', true);
-          Swal.hideLoading();
-          Swal.update({
-            icon: 'error',
-            title: 'Gagal',
-            html: `<pre class="text-start small">${escapeHtml(JSON.stringify(st.error, null, 2))}</pre>`,
-            showCancelButton: false,
-            showConfirmButton: true
-          });
-        } else if (st.status === 'canceled'){
-          clearInterval(pollTimer); pollTimer=null; currentJobId=null;
-          $('#btnCancel').prop('disabled', true);
-          Swal.hideLoading();
-          Swal.update({
-            icon: 'info',
-            title: 'Dibatalkan',
-            html: `<div class="text-start">Proses dibatalkan. Terhapus <b>${st.deleted}</b> dari <b>${st.total}</b> tweet.</div>`,
-            showCancelButton: false,
-            showConfirmButton: true
-          });
-        }
-      }catch(err){
-        // network/other; biarkan polling lanjut
-        console.log('poll error', err);
-      }
-    }, 800); // interval polling
   }
 
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, m => ({
       '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
     }[m]));
+  }
+
+  function beginPolling(){
+    pollTimer = setInterval(async ()=>{
+      if (!currentJobId) return;
+      try {
+        const st = await $.getJSON('/delete/status', { jobId: currentJobId });
+        if (!st.ok) return;
+
+        updateBar(st.deleted, st.total);
+
+        if (['done','error','canceled'].includes(st.status)) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+          currentJobId = null;
+
+          // close old modal and show result
+          Swal.close();
+          const icon = st.status === 'done' ? 'success' :
+                       st.status === 'error' ? 'error' : 'info';
+          const title = st.status === 'done' ? 'Selesai' :
+                        st.status === 'error' ? 'Gagal' : 'Dibatalkan';
+          const html = st.status === 'error'
+            ? `<pre class="text-start small">${escapeHtml(JSON.stringify(st.error, null, 2))}</pre>`
+            : `<div class="text-start">Terhapus <b>${st.deleted}</b> dari <b>${st.total}</b> tweet.</div>`;
+
+          Swal.fire({ icon, title, html, confirmButtonText: 'OK' });
+        }
+      } catch (err) {
+        console.log('poll error', err);
+      }
+    }, 1500); // safer polling interval
   }
 
   $('#btnDeleteAll').on('click', async function(){
@@ -111,18 +100,18 @@ $(function(){
     });
     if (!conf.isConfirmed) return;
 
-    try{
+    try {
       const start = await $.post('/delete/start');
-      if (!start.ok){
+      if (!start.ok) {
         return Swal.fire({ icon:'error', title:'Gagal', text: start.error || 'Tidak bisa memulai job' });
       }
-      if (!start.jobId){
+      if (!start.jobId) {
         return Swal.fire({ icon:'info', title:'Tidak ada tweet', text:'Akun ini tidak memiliki tweet untuk dihapus.' });
       }
       currentJobId = start.jobId;
       openProgressModal(start.total);
       beginPolling();
-    }catch(err){
+    } catch (err) {
       Swal.fire({ icon:'error', title:'Gagal', text: err.responseJSON?.error || err.statusText || 'Error' });
     }
   });
@@ -130,8 +119,7 @@ $(function(){
   $('#btnCancel').on('click', async function(){
     if (!currentJobId) return;
     $(this).prop('disabled', true);
-    try{
-      await $.post('/delete/cancel', { jobId: currentJobId });
-    }catch(e){}
+    try { await $.post('/delete/cancel', { jobId: currentJobId }); }
+    catch(e){ console.warn('cancel failed', e); }
   });
 });
