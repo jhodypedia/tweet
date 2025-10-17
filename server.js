@@ -1,37 +1,52 @@
+// ================================================
+// 🐦 Login with X (Twitter) + Delete All Tweets Tool
+// Node.js + Express + EJS + express-ejs-layouts
+// ================================================
+
 import express from 'express';
 import session from 'express-session';
 import crypto from 'crypto';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import path from 'path';
+import expressLayouts from 'express-ejs-layouts';
 import { fileURLToPath } from 'url';
 
 dotenv.config();
 
+// ==== ENV ====
 const {
   PORT = 3000,
-  BASE_URL = `http://localhost:3000`,
+  BASE_URL,
   X_CLIENT_ID,
   X_REDIRECT_URI = `${BASE_URL}/callback`,
-  X_SCOPES = 'tweet.read users.read offline.access',
+  X_SCOPES = 'tweet.read tweet.write users.read offline.access',
   SESSION_SECRET = 'change-me'
 } = process.env;
 
 if (!X_CLIENT_ID) {
-  console.error('Missing X_CLIENT_ID in .env');
+  console.error('❌ Missing X_CLIENT_ID in .env');
   process.exit(1);
 }
 
+// ==== Setup paths ====
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ==== Express app ====
 const app = express();
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+
+// 👉 Enable express-ejs-layouts
+app.use(expressLayouts);
+app.set('layout', 'layout');
+
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use('/public', express.static(path.join(__dirname, 'public')));
 
+// ==== Sessions ====
 app.use(
   session({
     name: 'xlogin.sid',
@@ -41,40 +56,39 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: 'lax',
-      secure: true // pastikan true di HTTPS (nginx reverse proxy)
+      secure: true // true wajib jika pakai HTTPS (Nginx proxy)
     }
   })
 );
 
-/* ===========================
-   Utils: PKCE & helpers
-=========================== */
-
+// ==== Helper functions ====
 function b64url(buf) {
   return buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 }
-function genVerifier() { return b64url(crypto.randomBytes(32)); }
-function sha256(str) { return crypto.createHash('sha256').update(str).digest(); }
-function toChallengeS256(verifier) { return b64url(sha256(verifier)); }
-function newState() { return b64url(crypto.randomBytes(16)); }
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+function genVerifier() {
+  return b64url(crypto.randomBytes(32));
+}
+function sha256(str) {
+  return crypto.createHash('sha256').update(str).digest();
+}
+function toChallengeS256(verifier) {
+  return b64url(sha256(verifier));
+}
+function newState() {
+  return b64url(crypto.randomBytes(16));
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* ===========================
-   In-memory Job Store
-   jobs[jobId] = {
-     userId, total, deleted, status: 'pending'|'running'|'done'|'error'|'canceled',
-     startedAt, finishedAt, error, ids, cancel: false
-   }
-=========================== */
-
+// In-memory job store
 const jobs = new Map();
 
-/* ===========================
-   Routes: pages
-=========================== */
+// ============================================
+// ROUTES
+// ============================================
 
 app.get('/', (req, res) => {
   res.render('index', {
+    layout: 'layout',
     isAuthed: Boolean(req.session.tokens?.access_token),
     user: req.session.user || null
   });
@@ -82,15 +96,13 @@ app.get('/', (req, res) => {
 
 app.get('/dashboard', ensureAuth, (req, res) => {
   res.render('dashboard', {
+    layout: 'layout',
     user: req.session.user,
     tokens: req.session.tokens
   });
 });
 
-/* ===========================
-   OAuth2 PKCE Login
-=========================== */
-
+// ==== LOGIN WITH X ====
 app.get('/login', (req, res) => {
   const verifier = genVerifier();
   const challenge = toChallengeS256(verifier);
@@ -113,22 +125,20 @@ app.get('/login', (req, res) => {
   res.redirect(authorizeUrl);
 });
 
+// ==== CALLBACK ====
 app.get('/callback', async (req, res) => {
   try {
     const { code, state, error, error_description } = req.query;
     if (error) return res.status(400).send(`OAuth error: ${error} - ${error_description || ''}`);
     if (!code || !state) return res.status(400).send('Missing code/state');
-
-    if (!req.session.oauth_state || state !== req.session.oauth_state) {
-      return res.status(400).send('Invalid state (CSRF)');
-    }
+    if (!req.session.oauth_state || state !== req.session.oauth_state)
+      return res.status(400).send('Invalid state');
     if (!req.session.pkce?.verifier) return res.status(400).send('Missing PKCE verifier');
 
-    // Exchange code -> tokens
     const tokenUrl = 'https://api.x.com/2/oauth2/token';
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
-      code: String(code),
+      code,
       redirect_uri: X_REDIRECT_URI,
       client_id: X_CLIENT_ID,
       code_verifier: req.session.pkce.verifier
@@ -137,10 +147,8 @@ app.get('/callback', async (req, res) => {
     const tokenResp = await axios.post(tokenUrl, body.toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     });
+    req.session.tokens = tokenResp.data;
 
-    req.session.tokens = tokenResp.data; // contains access_token, refresh_token, etc.
-
-    // Get user profile
     const me = await axios.get('https://api.x.com/2/users/me', {
       headers: { Authorization: `Bearer ${req.session.tokens.access_token}` }
     });
@@ -156,10 +164,10 @@ app.get('/callback', async (req, res) => {
   }
 });
 
-// Optional: post a tweet
+// ==== POST TWEET ====
 app.post('/tweet', ensureAuth, async (req, res) => {
   try {
-    const text = req.body?.text || 'Hello from PKCE demo!';
+    const text = req.body?.text || 'Hello from X PKCE demo!';
     const r = await axios.post(
       'https://api.x.com/2/tweets',
       { text },
@@ -171,18 +179,19 @@ app.post('/tweet', ensureAuth, async (req, res) => {
   }
 });
 
-// Token refresh (needs offline.access)
+// ==== REFRESH TOKEN ====
 app.post('/refresh', ensureAuth, async (req, res) => {
   try {
-    if (!req.session.tokens?.refresh_token) {
+    if (!req.session.tokens?.refresh_token)
       return res.status(400).json({ error: 'No refresh_token available' });
-    }
+
     const tokenUrl = 'https://api.x.com/2/oauth2/token';
     const body = new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: req.session.tokens.refresh_token,
       client_id: X_CLIENT_ID
     });
+
     const r = await axios.post(tokenUrl, body.toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     });
@@ -193,25 +202,25 @@ app.post('/refresh', ensureAuth, async (req, res) => {
   }
 });
 
+// ==== LOGOUT ====
 app.post('/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/'));
 });
 
-/* ===========================
-   DELETE ALL TWEETS (Job)
-=========================== */
+// ============================================================
+// DELETE ALL TWEETS (job + polling + cancel)
+// ============================================================
 
-// Start job: collect tweet IDs (batched) and begin deletion in background
 app.post('/delete/start', ensureAuth, async (req, res) => {
   try {
     const access_token = req.session.tokens?.access_token;
     const userId = req.session.user?.id;
-    if (!access_token || !userId) return res.status(401).json({ error: 'Not authenticated' });
+    if (!access_token || !userId)
+      return res.status(401).json({ error: 'Not authenticated' });
 
-    // 1) Collect IDs (pagination)
     const ids = [];
     let nextToken = null;
-    const MAX_PAGES = 10; // ~1000 tweets (10 x 100). Sesuaikan jika perlu.
+    const MAX_PAGES = 10; // ~1000 tweets
     for (let i = 0; i < MAX_PAGES; i++) {
       const url = new URL(`https://api.x.com/2/users/${userId}/tweets`);
       url.searchParams.set('max_results', '100');
@@ -221,17 +230,15 @@ app.post('/delete/start', ensureAuth, async (req, res) => {
         headers: { Authorization: `Bearer ${access_token}` }
       });
       const chunk = tw.data?.data || [];
-      ids.push(...chunk.map(t => t.id));
+      ids.push(...chunk.map((t) => t.id));
 
       nextToken = tw.data?.meta?.next_token || null;
       if (!nextToken) break;
     }
 
-    if (ids.length === 0) {
+    if (ids.length === 0)
       return res.json({ ok: true, jobId: null, message: 'No tweets to delete.' });
-    }
 
-    // 2) Create job
     const jobId = b64url(crypto.randomBytes(12));
     const job = {
       jobId,
@@ -241,13 +248,13 @@ app.post('/delete/start', ensureAuth, async (req, res) => {
       status: 'running',
       startedAt: Date.now(),
       finishedAt: null,
-      error: null,
       ids,
-      cancel: false
+      cancel: false,
+      error: null
     };
     jobs.set(jobId, job);
 
-    // 3) Run background worker (no queue lib; simple loop)
+    // Background deletion
     (async () => {
       try {
         for (const id of job.ids) {
@@ -262,11 +269,9 @@ app.post('/delete/start', ensureAuth, async (req, res) => {
             });
             job.deleted += 1;
           } catch (err) {
-            // Simpan error ringan di console; lanjut
-            console.log('Delete failed', id, err.response?.data || err.message);
+            console.log('Delete failed:', id, err.response?.data || err.message);
           }
-          // kecilkan rate; hindari limit
-          await sleep(600);
+          await sleep(600); // rate delay
         }
         if (!job.cancel && job.status !== 'error') {
           job.status = 'done';
@@ -286,7 +291,6 @@ app.post('/delete/start', ensureAuth, async (req, res) => {
   }
 });
 
-// Poll status
 app.get('/delete/status', ensureAuth, (req, res) => {
   const { jobId } = req.query;
   const job = jobs.get(jobId);
@@ -301,7 +305,6 @@ app.get('/delete/status', ensureAuth, (req, res) => {
   });
 });
 
-// Cancel job
 app.post('/delete/cancel', ensureAuth, (req, res) => {
   const { jobId } = req.body;
   const job = jobs.get(jobId);
@@ -310,19 +313,17 @@ app.post('/delete/cancel', ensureAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-/* ===========================
-   Middleware
-=========================== */
-
+// ============================================
+// Middleware
+// ============================================
 function ensureAuth(req, res, next) {
   if (req.session?.tokens?.access_token) return next();
   res.redirect('/');
 }
 
-/* ===========================
-   Start server
-=========================== */
-
+// ============================================
+// Start server
+// ============================================
 app.listen(PORT, () => {
-  console.log(`✅ Server listening on ${BASE_URL} (PORT ${PORT})`);
+  console.log(`✅ Server running on ${BASE_URL} (PORT ${PORT})`);
 });
