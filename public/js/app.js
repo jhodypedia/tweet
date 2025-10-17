@@ -1,4 +1,8 @@
-// Simple appear-on-scroll animation (no external lib)
+// ===============================
+// ✨ PansaGroup Dashboard Logic
+// ===============================
+
+// Simple appear-on-scroll animation
 (() => {
   const io = new IntersectionObserver(entries => {
     entries.forEach(e => {
@@ -18,34 +22,29 @@ $(function(){
       html: `
         <div class="text-start">
           <div class="mb-2">Total: <span id="swal-total">${total}</span></div>
-          <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress" role="progressbar">
             <div class="progress-bar progress-bar-striped progress-bar-animated" id="swal-bar" style="width:0%"></div>
           </div>
           <div class="d-flex justify-content-between mt-2 small">
             <div>Deleted: <span id="swal-deleted">0</span></div>
             <div><span id="swal-percent">0</span>%</div>
           </div>
+          <div class="mt-2 small text-warning" id="swal-waiting"></div>
         </div>
       `,
       allowOutsideClick: false,
       showConfirmButton: false,
       showCancelButton: true,
       cancelButtonText: 'Tutup',
-      didOpen: () => {
-        Swal.showLoading();
-      },
+      didOpen: () => Swal.showLoading(),
       willClose: () => {
-        // stop polling if modal manually closed
-        if (pollTimer) {
-          clearInterval(pollTimer);
-          pollTimer = null;
-        }
+        if (pollTimer) clearInterval(pollTimer);
       }
     });
   }
 
   function updateBar(deleted, total){
-    const pct = total ? Math.floor((deleted / total) * 100) : 0;
+    const pct = total ? Math.floor((deleted/total)*100) : 0;
     $('#swal-deleted').text(deleted);
     $('#swal-percent').text(pct);
     $('#swal-bar').css('width', pct + '%');
@@ -66,12 +65,17 @@ $(function(){
 
         updateBar(st.deleted, st.total);
 
-        if (['done','error','canceled'].includes(st.status)) {
-          clearInterval(pollTimer);
-          pollTimer = null;
-          currentJobId = null;
+        if (st.status === 'waiting_limit') {
+          $('#swal-bar').removeClass('bg-danger').addClass('bg-warning');
+          $('#swal-waiting').text('⏳ Menunggu reset limit Twitter... akan dilanjutkan otomatis.');
+          return;
+        } else {
+          $('#swal-waiting').text('');
+          $('#swal-bar').removeClass('bg-warning').addClass('bg-info');
+        }
 
-          // close old modal and show result
+        if (['done','error','canceled'].includes(st.status)) {
+          clearInterval(pollTimer); pollTimer = null; currentJobId = null;
           Swal.close();
           const icon = st.status === 'done' ? 'success' :
                        st.status === 'error' ? 'error' : 'info';
@@ -86,7 +90,7 @@ $(function(){
       } catch (err) {
         console.log('poll error', err);
       }
-    }, 1500); // safer polling interval
+    }, 1500);
   }
 
   $('#btnDeleteAll').on('click', async function(){
