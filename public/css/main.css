@@ -1,22 +1,22 @@
 /* =======================================================
-   🎨 PANSA X TOOLS GLOBAL STYLE
-   - Aurora gradient background
-   - Glassmorphism card
-   - Modern hover + animation
+   🎨 PANSA X TOOLS — UNIVERSAL THEME
+   Responsive • Aurora • Glassmorphism • Fluid Motion
    ======================================================= */
 
 :root {
   --bg-dark: #0f1419;
   --fg: #e7e9ea;
-  --glass: rgba(21, 28, 36, 0.6);
+  --glass: rgba(21, 28, 36, 0.55);
   --border: rgba(255, 255, 255, 0.08);
   --brand: #1d9bf0;
+  --brand-light: #38bdf8;
   --gradient: linear-gradient(135deg, #1d9bf0, #00ffa3, #ff2fb9);
+  --radius: 16px;
+  --transition: 0.3s ease;
 }
 
-*,
-*::before,
-*::after {
+/* Base Reset */
+*, *::before, *::after {
   box-sizing: border-box;
   scroll-behavior: smooth;
 }
@@ -25,183 +25,211 @@ html, body {
   margin: 0;
   padding: 0;
   min-height: 100%;
+  font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   background: var(--bg-dark);
   color: var(--fg);
-  font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* ---------- Aurora floating background ---------- */
+/* =======================================================
+   🌌 Aurora Background
+   ======================================================= */
 .bg-aurora {
   position: fixed;
-  inset: -20% -20% auto -20%;
-  height: 90vh;
+  inset: 0;
   z-index: -1;
   background:
-    radial-gradient(60% 60% at 20% 20%, rgba(29,155,240,.25), transparent 60%),
-    radial-gradient(50% 50% at 80% 30%, rgba(0,255,163,.18), transparent 70%),
+    radial-gradient(60% 60% at 15% 20%, rgba(29,155,240,.25), transparent 60%),
+    radial-gradient(50% 50% at 85% 30%, rgba(0,255,163,.18), transparent 70%),
     radial-gradient(40% 40% at 60% 80%, rgba(255,47,185,.15), transparent 70%);
-  filter: blur(50px);
-  animation: auroraMove 18s ease-in-out infinite alternate;
+  filter: blur(55px);
+  animation: auroraMove 20s ease-in-out infinite alternate;
 }
-
 @keyframes auroraMove {
-  0%   {transform: translateY(0) scale(1);}
-  100% {transform: translateY(-30px) scale(1.03);}
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(-40px, 25px) scale(1.1); }
 }
 
-/* ---------- Glassy Components ---------- */
+/* =======================================================
+   🧊 Glassmorphism Components
+   ======================================================= */
 .glassy {
   background: var(--glass);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius);
   backdrop-filter: blur(12px);
-  transition: all 0.3s ease;
+  -webkit-backdrop-filter: blur(12px);
+  transition: all var(--transition);
 }
-
 .glassy:hover {
   border-color: rgba(255,255,255,0.12);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.25);
-  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  transform: translateY(-3px);
 }
 
-/* ---------- Navbar ---------- */
+/* =======================================================
+   🌈 Navbar
+   ======================================================= */
 .navbar {
   background: rgba(17, 21, 26, 0.65);
   backdrop-filter: blur(10px);
 }
-
 .navbar-brand {
   font-weight: 700;
   font-size: 1.25rem;
-  transition: 0.3s;
+  transition: var(--transition);
 }
-
-.navbar-brand:hover {
-  opacity: 0.9;
-}
-
+.navbar-brand:hover { opacity: 0.9; }
 .text-gradient {
   background: var(--gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
-
 .nav-link {
   color: var(--fg);
   opacity: 0.8;
-  transition: 0.25s;
+  transition: var(--transition);
 }
-
 .nav-link:hover {
   opacity: 1;
   color: var(--brand);
 }
 
-/* ---------- Buttons ---------- */
+/* =======================================================
+   💠 Buttons
+   ======================================================= */
 .btn {
   border-radius: 10px;
-  transition: all 0.3s ease;
+  transition: all 0.25s ease;
+  font-weight: 500;
 }
-
 .btn-primary {
   background: var(--brand);
   border: none;
+  color: #fff;
 }
-
 .btn-primary:hover {
   filter: brightness(1.1);
   transform: translateY(-1px);
 }
-
 .btn-outline-light:hover {
   background: rgba(255,255,255,0.1);
+  color: #fff;
 }
-
-/* Pulse glow effect for action buttons */
 .pulse {
   animation: pulseGlow 1.6s ease-in-out infinite;
 }
-
 @keyframes pulseGlow {
-  0%   {box-shadow: 0 0 0 0 rgba(29,155,240,0.6);}
-  70%  {box-shadow: 0 0 0 15px rgba(29,155,240,0);}
-  100% {box-shadow: 0 0 0 0 rgba(29,155,240,0);}
+  0% { box-shadow: 0 0 0 0 rgba(29,155,240,0.6); }
+  70% { box-shadow: 0 0 0 15px rgba(29,155,240,0); }
+  100% { box-shadow: 0 0 0 0 rgba(29,155,240,0); }
 }
 
-/* ---------- Cards ---------- */
+/* =======================================================
+   🪞 Cards
+   ======================================================= */
 .card.glassy {
   overflow: hidden;
   animation: fadeUp 0.6s ease both;
+  border-radius: var(--radius);
 }
-
 @keyframes fadeUp {
-  from {opacity: 0; transform: translateY(20px);}
-  to   {opacity: 1; transform: translateY(0);}
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-
 .card h1, .card h2, .card h5 {
   background: var(--gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-/* ---------- Animations ---------- */
+/* =======================================================
+   🧮 Tables & Datatables
+   ======================================================= */
+table.dataTable {
+  background: rgba(255,255,255,0.02);
+  border-radius: 10px;
+  overflow: hidden;
+}
+table.dataTable thead {
+  background: rgba(255,255,255,0.05);
+}
+table.dataTable th, table.dataTable td {
+  color: var(--fg);
+  border-color: rgba(255,255,255,0.08);
+  vertical-align: middle;
+}
+table.dataTable tbody tr:hover {
+  background: rgba(255,255,255,0.05);
+  transition: 0.2s;
+}
+
+/* =======================================================
+   🔥 Animations & Utilities
+   ======================================================= */
 .fadein {
   animation: fadeIn 1s ease both;
 }
-
 @keyframes fadeIn {
-  from {opacity: 0; transform: translateY(10px);}
-  to   {opacity: 1; transform: none;}
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
 }
+.text-secondary { color: rgba(255,255,255,0.65) !important; }
+.elevate { box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
 
-/* ---------- Utilities ---------- */
-.text-secondary {
-  color: rgba(255,255,255,0.6) !important;
-}
-
-.elevate {
-  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
-}
-
+/* Avatar Glow */
 .avatar-glow {
-  width: 48px;
-  height: 48px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background: radial-gradient(circle at 50% 50%, rgba(29,155,240,0.25), transparent 70%);
   box-shadow: 0 0 24px rgba(29,155,240,0.4);
+  object-fit: cover;
 }
 
-/* ---------- Progress bar sweetalert override ---------- */
+/* SweetAlert Progress Bar Override */
 .swal2-popup .progress {
   height: 8px;
   background: rgba(255,255,255,0.08);
 }
-
 .swal2-popup .progress-bar {
   background: var(--gradient);
-  transition: width .4s ease;
+  transition: width 0.4s ease;
 }
 
-/* ---------- Footer ---------- */
+/* =======================================================
+   ⚡️ Footer
+   ======================================================= */
 footer {
   opacity: 0.7;
-  transition: opacity .3s ease;
+  backdrop-filter: blur(6px);
+  transition: opacity 0.3s ease;
+}
+footer:hover { opacity: 1; }
+
+/* =======================================================
+   📱 Responsive Breakpoints
+   ======================================================= */
+@media (max-width: 992px) {
+  .navbar-brand { font-size: 1.15rem; }
+  .card { padding: 1.25rem !important; }
+  .bg-aurora { filter: blur(40px); }
 }
 
-footer:hover {opacity: 1;}
-
-/* ---------- Responsive ---------- */
 @media (max-width: 768px) {
-  .navbar-brand {
-    font-size: 1.1rem;
-  }
-  .card {
-    padding: 1rem !important;
-  }
-  .bg-aurora {height: 70vh;}
+  body { font-size: 0.95rem; }
+  .navbar-brand { font-size: 1rem; }
+  .btn-lg { font-size: 0.9rem; padding: 0.6rem 1.2rem; }
+  .table-responsive { font-size: 0.85rem; }
+  .card.glassy { border-radius: 12px; }
+  .avatar-glow { width: 52px; height: 52px; }
+}
+
+@media (max-width: 576px) {
+  .navbar { padding: 0.5rem 1rem; }
+  footer { font-size: 0.8rem; }
+  table.dataTable { font-size: 0.8rem; }
+  .bg-aurora { height: 70vh; }
 }
