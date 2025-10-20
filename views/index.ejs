@@ -1,23 +1,83 @@
-<section class="row g-4 align-items-center">
-  <div class="col-12 col-lg-6">
-    <div class="card glassy p-4 elevate" data-animate="fade-up">
-      <h1 class="display-6 fw-bold mb-3">Login with X</h1>
-      <p class="text-secondary">Autentikasi aman dengan OAuth 2.0 + PKCE. Setelah login, kamu bisa pakai tools manajemen tweet di dashboard.</p>
-      <% if (!isAuthed) { %>
-        <a href="/login" class="btn btn-primary btn-lg pulse"><i class="fa-brands fa-x-twitter me-2"></i> Login with X</a>
-      <% } else { %>
-        <a href="/dashboard" class="btn btn-success btn-lg"><i class="fa-solid fa-gauge me-2"></i> Buka Dashboard</a>
-      <% } %>
+<section class="min-vh-100 d-flex align-items-center justify-content-center position-relative overflow-hidden">
+  <div class="container py-5">
+    <div class="row align-items-center g-5">
+      
+      <!-- === Hero Text / Login === -->
+      <div class="col-12 col-lg-6" data-animate="fade-up">
+        <div class="glassy p-5 rounded-4 shadow-lg elevate text-center text-lg-start">
+          <h1 class="display-5 fw-bold mb-3 text-gradient">
+            X Tools — Simplify Your Tweets
+          </h1>
+          <p class="lead text-secondary mb-4">
+            Kelola tweet kamu dengan mudah, aman, dan cepat.  
+            Gunakan autentikasi <strong>OAuth&nbsp;2.0&nbsp;+&nbsp;PKCE</strong> agar akun kamu tetap aman.  
+            Setelah login, nikmati dashboard elegan dengan fitur hapus, pantau, dan kontrol tweet hanya dalam satu klik.
+          </p>
+
+          <% if (!isAuthed) { %>
+            <a href="/login" class="btn btn-primary btn-lg px-4 pulse shadow-sm">
+              <i class="fa-brands fa-x-twitter me-2"></i> Login with X
+            </a>
+          <% } else { %>
+            <a href="/dashboard" class="btn btn-success btn-lg px-4 shadow-sm">
+              <i class="fa-solid fa-gauge me-2"></i> Buka Dashboard
+            </a>
+          <% } %>
+        </div>
+      </div>
+
+      <!-- === Security Feature Card === -->
+      <div class="col-12 col-lg-6" data-animate="fade-in">
+        <div class="glassy p-5 rounded-4 shadow-lg text-center text-lg-start">
+          <div class="mb-4">
+            <h2 class="fw-bold h4 text-gradient mb-2">
+              <i class="fa-solid fa-shield-halved me-2"></i> Keamanan Kelas Premium
+            </h2>
+            <p class="text-secondary mb-0">
+              Kami menjaga keamanan data akun kamu dengan sistem enkripsi modern.
+            </p>
+          </div>
+
+          <ul class="list-unstyled small">
+            <li class="mb-3">
+              <i class="fa-regular fa-circle-check text-success me-2"></i>
+              PKCE + State untuk perlindungan <strong>anti-CSRF</strong>.
+            </li>
+            <li class="mb-3">
+              <i class="fa-regular fa-circle-check text-success me-2"></i>
+              <strong>Secure session cookies</strong> dengan enkripsi penuh.
+            </li>
+            <li class="mb-3">
+              <i class="fa-regular fa-circle-check text-success me-2"></i>
+              Akses terbatas dengan <strong>scopes minimal</strong> & token refresh otomatis.
+            </li>
+            <li class="mb-3">
+              <i class="fa-regular fa-circle-check text-success me-2"></i>
+              Semua proses login & hapus tweet dijalankan <strong>langsung via API resmi X</strong>.
+            </li>
+          </ul>
+
+          <div class="mt-4">
+            <img src="/public/img/secure-login.svg" alt="Secure Login Illustration" 
+                 class="img-fluid rounded-4 shadow-sm" style="max-width: 380px;">
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
-  <div class="col-12 col-lg-6">
-    <div class="card glassy p-4" data-animate="fade-in">
-      <h2 class="h4 mb-3"><i class="fa-solid fa-shield-halved me-2"></i> Fitur Keamanan</h2>
-      <ul class="list-unstyled m-0">
-        <li class="mb-2"><i class="fa-regular fa-circle-check text-success me-2"></i> PKCE + State anti-CSRF</li>
-        <li class="mb-2"><i class="fa-regular fa-circle-check text-success me-2"></i> Session secure cookie</li>
-        <li class="mb-2"><i class="fa-regular fa-circle-check text-success me-2"></i> Scope minimal & refresh token</li>
-      </ul>
-    </div>
+
+  <!-- floating light animation -->
+  <div class="position-absolute top-0 start-0 w-100 h-100" 
+       style="background: radial-gradient(circle at 80% 20%, rgba(255,255,255,0.05), transparent 60%);
+              pointer-events: none; filter: blur(80px);
+              animation: floatLight 14s ease-in-out infinite alternate;">
   </div>
 </section>
+
+<style>
+@keyframes floatLight {
+  0% { transform: translateY(0px) scale(1); opacity: 0.6; }
+  100% { transform: translateY(-25px) scale(1.05); opacity: 0.9; }
+}
+</style>
