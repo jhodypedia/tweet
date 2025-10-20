@@ -1,5 +1,5 @@
 // =====================================================
-// 🐦 X / Twitter OAuth2 PKCE + Delete All Tweets Tool
+// 🐦 X / Twitter OAuth2 PKCE + Delete per Tweet (DataTable)
 // Node.js + Express + EJS + express-ejs-layouts
 // =====================================================
 
@@ -69,10 +69,6 @@ const sha256 = (str) => crypto.createHash("sha256").update(str).digest();
 const genVerifier = () => b64url(crypto.randomBytes(32));
 const toChallengeS256 = (verifier) => b64url(sha256(verifier));
 const newState = () => b64url(crypto.randomBytes(16));
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// ===== JOB STORE =====
-const jobs = new Map();
 
 // ===== MIDDLEWARE =====
 const ensureAuth = (req, res, next) => {
@@ -85,7 +81,7 @@ app.use((req, res, next) => {
 });
 
 // =====================================================
-// ROUTES
+// ROUTES: PAGES
 // =====================================================
 app.get("/", (req, res) => {
   res.render("index", {
@@ -175,7 +171,7 @@ app.get("/callback", async (req, res) => {
 });
 
 // =====================================================
-// ✉️ POST TWEET
+// ✉️ POST TWEET (opsional, tetap dipertahankan)
 // =====================================================
 app.post("/tweet", ensureAuth, async (req, res) => {
   try {
@@ -192,141 +188,63 @@ app.post("/tweet", ensureAuth, async (req, res) => {
 });
 
 // =====================================================
+// 🧭 API: LIST TWEETS (paged) untuk DataTables lazy-load
+// =====================================================
+app.get("/tweets/list", ensureAuth, async (req, res) => {
+  try {
+    const access_token = req.session.tokens?.access_token;
+    const userId = req.session.user?.id;
+    if (!access_token || !userId) return res.status(401).json({ error: "Not authenticated" });
+
+    const { cursor = "", max = "100" } = req.query;
+    const url = new URL(`https://api.x.com/2/users/${userId}/tweets`);
+    url.searchParams.set("max_results", String(Math.min(parseInt(max, 10) || 100, 100)));
+    url.searchParams.set("tweet.fields", "created_at,public_metrics,attachments,possibly_sensitive,source");
+    if (cursor) url.searchParams.set("pagination_token", cursor);
+
+    const r = await axios.get(url.toString(), {
+      headers: { Authorization: `Bearer ${access_token}` }
+    });
+
+    const data = r.data?.data || [];
+    const meta = r.data?.meta || {};
+    res.json({
+      ok: true,
+      tweets: data,
+      next_token: meta.next_token || null,
+      result_count: meta.result_count || 0
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.response?.data || e.message });
+  }
+});
+
+// =====================================================
+// 🗑 API: DELETE PER TWEET
+// =====================================================
+app.post("/tweets/:id/delete", ensureAuth, async (req, res) => {
+  try {
+    const access_token = req.session.tokens?.access_token;
+    const { id } = req.params;
+    if (!access_token) return res.status(401).json({ error: "Not authenticated" });
+
+    await axios.delete(`https://api.x.com/2/tweets/${id}`, {
+      headers: { Authorization: `Bearer ${access_token}` }
+    });
+
+    res.json({ ok: true, id });
+  } catch (e) {
+    const status = e.response?.status;
+    const payload = e.response?.data || e.message;
+    res.status(status || 500).json({ ok: false, error: payload });
+  }
+});
+
+// =====================================================
 // 🔒 LOGOUT
 // =====================================================
 app.post("/logout", (req, res) => {
   req.session.destroy(() => res.redirect("/"));
-});
-
-// =====================================================
-// 🗑 DELETE ALL TWEETS (FULL RATE LIMIT HANDLER)
-// =====================================================
-app.post("/delete/start", ensureAuth, async (req, res) => {
-  try {
-    const access_token = req.session.tokens?.access_token;
-    const userId = req.session.user?.id;
-    if (!access_token || !userId)
-      return res.status(401).json({ error: "Not authenticated" });
-
-    const ids = [];
-    let nextToken = null;
-    const MAX_PAGES = 10;
-
-    for (let i = 0; i < MAX_PAGES; i++) {
-      const url = new URL(`https://api.x.com/2/users/${userId}/tweets`);
-      url.searchParams.set("max_results", "100");
-      if (nextToken) url.searchParams.set("pagination_token", nextToken);
-
-      const tw = await axios.get(url.toString(), {
-        headers: { Authorization: `Bearer ${access_token}` }
-      });
-
-      const chunk = tw.data?.data || [];
-      ids.push(...chunk.map((t) => t.id));
-      nextToken = tw.data?.meta?.next_token || null;
-      if (!nextToken) break;
-    }
-
-    if (ids.length === 0)
-      return res.json({ ok: true, jobId: null, message: "No tweets to delete." });
-
-    const jobId = b64url(crypto.randomBytes(12));
-    const job = {
-      jobId,
-      userId,
-      total: ids.length,
-      deleted: 0,
-      status: "running",
-      startedAt: Date.now(),
-      finishedAt: null,
-      ids,
-      cancel: false,
-      error: null
-    };
-    jobs.set(jobId, job);
-
-    // ===== Worker Async Delete =====
-    (async () => {
-      try {
-        for (const id of job.ids) {
-          if (job.cancel) {
-            job.status = "canceled";
-            job.finishedAt = Date.now();
-            break;
-          }
-
-          try {
-            await axios.delete(`https://api.x.com/2/tweets/${id}`, {
-              headers: { Authorization: `Bearer ${access_token}` }
-            });
-            job.deleted++;
-            await sleep(2000); // delay antar tweet
-          } catch (err) {
-            const status = err.response?.status;
-            console.log("Delete failed:", id, status);
-
-            // === RATE LIMIT HANDLING ===
-            if (status === 429) {
-              const resetHeader = err.response?.headers?.["x-rate-limit-reset"];
-              let waitMs = 15 * 60 * 1000; // default 15 menit
-              if (resetHeader) {
-                const resetMs = Number(resetHeader) * 1000 - Date.now();
-                if (resetMs > 0) waitMs = resetMs + 5000;
-              }
-              const waitMin = Math.round(waitMs / 60000);
-              console.log(`🚦 Rate limit reached. Waiting ${waitMin} minutes…`);
-              job.status = "waiting_limit";
-              await sleep(waitMs);
-              job.status = "running";
-              continue;
-            }
-
-            // error lain → skip
-            await sleep(1000);
-          }
-        }
-
-        if (!job.cancel && job.status !== "error") {
-          job.status = "done";
-          job.finishedAt = Date.now();
-        }
-      } catch (err) {
-        job.status = "error";
-        job.error = err.response?.data || err.message;
-        job.finishedAt = Date.now();
-      }
-    })();
-
-    res.json({ ok: true, jobId, total: job.total });
-  } catch (e) {
-    console.error("delete/start error:", e.response?.data || e.message);
-    res.status(500).json({ error: e.response?.data || e.message });
-  }
-});
-
-// ==== Job Polling ====
-app.get("/delete/status", ensureAuth, (req, res) => {
-  const { jobId } = req.query;
-  const job = jobs.get(jobId);
-  if (!job) return res.status(404).json({ error: "Job not found" });
-  res.json({
-    ok: true,
-    jobId,
-    status: job.status,
-    total: job.total,
-    deleted: job.deleted,
-    error: job.error,
-    waiting: job.status === "waiting_limit"
-  });
-});
-
-// ==== Cancel ====
-app.post("/delete/cancel", ensureAuth, (req, res) => {
-  const { jobId } = req.body;
-  const job = jobs.get(jobId);
-  if (!job) return res.status(404).json({ error: "Job not found" });
-  job.cancel = true;
-  res.json({ ok: true });
 });
 
 // =====================================================
