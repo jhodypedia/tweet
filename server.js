@@ -22,7 +22,7 @@ const {
   X_REDIRECT_URI = `${BASE_URL}/callback`,
   X_SCOPES = "tweet.read tweet.write users.read offline.access",
   SESSION_SECRET = "change-this-super-secret",
-  X_API_BASE = "https://api.twitter.com" // default aman
+  X_API_BASE = "https://api.x.com" // default aman
 } = process.env;
 
 if (!X_CLIENT_ID) {
