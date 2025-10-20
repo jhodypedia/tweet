@@ -12,11 +12,35 @@
   document.querySelectorAll('[data-animate]').forEach(el => io.observe(el));
 })();
 
-$(function(){
+$(function () {
+  // =========================================================
+  // 🧭 Variables
+  // =========================================================
   let currentJobId = null;
   let pollTimer = null;
+  let dt = null;
+  let nextToken = null;
+  let loadedTweets = 0;
 
-  function openProgressModal(total){
+  // =========================================================
+  // 🧊 Utility
+  // =========================================================
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, m => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[m]));
+  }
+
+  const fmtDate = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return d.toLocaleString();
+  };
+
+  // =========================================================
+  // 🪄 Delete All Tweets (Progress Modal)
+  // =========================================================
+  function openProgressModal(total) {
     Swal.fire({
       title: 'Menghapus tweet…',
       html: `
@@ -43,21 +67,15 @@ $(function(){
     });
   }
 
-  function updateBar(deleted, total){
-    const pct = total ? Math.floor((deleted/total)*100) : 0;
+  function updateBar(deleted, total) {
+    const pct = total ? Math.floor((deleted / total) * 100) : 0;
     $('#swal-deleted').text(deleted);
     $('#swal-percent').text(pct);
     $('#swal-bar').css('width', pct + '%');
   }
 
-  function escapeHtml(s){
-    return String(s).replace(/[&<>"']/g, m => ({
-      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-    }[m]));
-  }
-
-  function beginPolling(){
-    pollTimer = setInterval(async ()=>{
+  function beginPolling() {
+    pollTimer = setInterval(async () => {
       if (!currentJobId) return;
       try {
         const st = await $.getJSON('/delete/status', { jobId: currentJobId });
@@ -74,7 +92,7 @@ $(function(){
           $('#swal-bar').removeClass('bg-warning').addClass('bg-info');
         }
 
-        if (['done','error','canceled'].includes(st.status)) {
+        if (['done', 'error', 'canceled'].includes(st.status)) {
           clearInterval(pollTimer); pollTimer = null; currentJobId = null;
           Swal.close();
           const icon = st.status === 'done' ? 'success' :
@@ -84,7 +102,6 @@ $(function(){
           const html = st.status === 'error'
             ? `<pre class="text-start small">${escapeHtml(JSON.stringify(st.error, null, 2))}</pre>`
             : `<div class="text-start">Terhapus <b>${st.deleted}</b> dari <b>${st.total}</b> tweet.</div>`;
-
           Swal.fire({ icon, title, html, confirmButtonText: 'OK' });
         }
       } catch (err) {
@@ -93,7 +110,7 @@ $(function(){
     }, 1500);
   }
 
-  $('#btnDeleteAll').on('click', async function(){
+  $('#btnDeleteAll').on('click', async function () {
     const conf = await Swal.fire({
       title: 'Yakin hapus semua tweet?',
       text: 'Tindakan ini tidak bisa dibatalkan!',
@@ -107,23 +124,127 @@ $(function(){
     try {
       const start = await $.post('/delete/start');
       if (!start.ok) {
-        return Swal.fire({ icon:'error', title:'Gagal', text: start.error || 'Tidak bisa memulai job' });
+        return Swal.fire({ icon: 'error', title: 'Gagal', text: start.error || 'Tidak bisa memulai job' });
       }
       if (!start.jobId) {
-        return Swal.fire({ icon:'info', title:'Tidak ada tweet', text:'Akun ini tidak memiliki tweet untuk dihapus.' });
+        return Swal.fire({ icon: 'info', title: 'Tidak ada tweet', text: 'Akun ini tidak memiliki tweet untuk dihapus.' });
       }
       currentJobId = start.jobId;
       openProgressModal(start.total);
       beginPolling();
     } catch (err) {
-      Swal.fire({ icon:'error', title:'Gagal', text: err.responseJSON?.error || err.statusText || 'Error' });
+      Swal.fire({ icon: 'error', title: 'Gagal', text: err.responseJSON?.error || err.statusText || 'Error' });
     }
   });
 
-  $('#btnCancel').on('click', async function(){
+  $('#btnCancel').on('click', async function () {
     if (!currentJobId) return;
     $(this).prop('disabled', true);
     try { await $.post('/delete/cancel', { jobId: currentJobId }); }
-    catch(e){ console.warn('cancel failed', e); }
+    catch (e) { console.warn('cancel failed', e); }
   });
+
+  // =========================================================
+  // 🧮 DataTables Tweet List (Load & Delete per Tweet)
+  // =========================================================
+  const elLoaded = $('#stat-loaded');
+  const elHasMore = $('#stat-has-more');
+  const btnLoadMore = $('#btn-load-more');
+  const btnRefresh = $('#btn-refresh');
+
+  function initDataTable() {
+    if (dt) return dt;
+    dt = $('#tweetsTable').DataTable({
+      pageLength: 10,
+      lengthMenu: [10, 25, 50],
+      order: [[1, 'desc']],
+      columnDefs: [
+        { targets: [0], visible: true },
+        { targets: [3, 4, 5, 6], className: 'text-end', width: '70px' },
+        { targets: -1, orderable: false, searchable: false, width: '100px' }
+      ]
+    });
+    return dt;
+  }
+
+  async function loadTweets(cursor = "") {
+    btnLoadMore.prop('disabled', true).text('Loading...');
+    try {
+      const res = await $.getJSON('/tweets/list', { cursor, max: 100 });
+      if (!res.ok) throw new Error(res.error || 'Failed to load tweets');
+
+      const data = res.tweets || [];
+      const table = initDataTable();
+      const rows = data.map(t => {
+        const m = t.public_metrics || {};
+        return [
+          t.id,
+          fmtDate(t.created_at),
+          escapeHtml(t.text || ''),
+          m.like_count ?? 0,
+          m.retweet_count ?? 0,
+          m.reply_count ?? 0,
+          m.quote_count ?? 0,
+          `<button class="btn btn-sm btn-danger btn-delete" data-id="${t.id}"><i class="fa-solid fa-trash"></i></button>`
+        ];
+      });
+      table.rows.add(rows).draw(false);
+
+      loadedTweets += rows.length;
+      elLoaded.text(loadedTweets);
+      nextToken = res.next_token || null;
+      elHasMore.text(nextToken ? 'Yes' : 'No');
+      btnLoadMore.toggle(!!nextToken);
+    } catch (e) {
+      Swal.fire('Error', e.message || 'Gagal memuat tweet', 'error');
+    } finally {
+      btnLoadMore.prop('disabled', false).text('Load More');
+    }
+  }
+
+  async function deleteTweet(id, btn) {
+    const conf = await Swal.fire({
+      title: 'Hapus tweet ini?',
+      text: `Tweet ID: ${id}`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Ya, hapus',
+      cancelButtonText: 'Batal'
+    });
+    if (!conf.isConfirmed) return;
+
+    try {
+      btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i>');
+      const r = await $.post(`/tweets/${id}/delete`);
+      if (!r.ok) throw new Error(r.error || 'Gagal menghapus tweet');
+      const table = initDataTable();
+      table.row(btn.closest('tr')).remove().draw(false);
+      loadedTweets--;
+      elLoaded.text(loadedTweets);
+      Swal.fire('Berhasil', `Tweet ${id} telah dihapus.`, 'success');
+    } catch (e) {
+      Swal.fire('Gagal', e.message || 'Gagal menghapus tweet', 'error');
+    } finally {
+      btn.prop('disabled', false).html('<i class="fa-solid fa-trash"></i>');
+    }
+  }
+
+  // Buttons
+  btnLoadMore.on('click', () => loadTweets(nextToken || ""));
+  btnRefresh.on('click', () => {
+    if (dt) dt.clear().draw();
+    loadedTweets = 0;
+    elLoaded.text('0');
+    nextToken = null;
+    elHasMore.text('-');
+    loadTweets("");
+  });
+
+  // Delegate delete
+  $(document).on('click', '.btn-delete', function () {
+    deleteTweet($(this).data('id'), $(this));
+  });
+
+  // Auto load first batch
+  if ($('#tweetsTable').length) loadTweets("");
 });
