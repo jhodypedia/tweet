@@ -44,7 +44,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use("/public", express.static(path.join(__dirname, "public")));
 
-// ===== SESSION (HTTPS + NGINX FIX) =====
+// ===== SESSION =====
 app.set("trust proxy", 1);
 app.use(
   session({
@@ -57,7 +57,7 @@ app.use(
       httpOnly: true,
       sameSite: "lax",
       secure: true,
-      maxAge: 1000 * 60 * 15
+      maxAge: 1000 * 60 * 30 // 30 menit
     }
   })
 );
@@ -73,10 +73,11 @@ const newState = () => b64url(crypto.randomBytes(16));
 // ===== MIDDLEWARE =====
 const ensureAuth = (req, res, next) => {
   if (req.session?.tokens?.access_token) return next();
-  res.redirect("/");
+  return res.redirect("/");
 };
 app.use((req, res, next) => {
   res.locals.title = "X Tools — PansaGroup";
+  res.locals.user = req.session.user || null;
   next();
 });
 
@@ -88,7 +89,7 @@ app.get("/", (req, res) => {
     layout: "layout",
     title: "Login with X | PansaGroup",
     isAuthed: Boolean(req.session.tokens?.access_token),
-    user: req.session.user || null
+    user: req.session.user
   });
 });
 
@@ -96,8 +97,7 @@ app.get("/dashboard", ensureAuth, (req, res) => {
   res.render("dashboard", {
     layout: "layout",
     title: "Dashboard — X Tools | PansaGroup",
-    user: req.session.user,
-    tokens: req.session.tokens
+    user: req.session.user
   });
 });
 
@@ -127,12 +127,9 @@ app.get("/login", (req, res) => {
 app.get("/callback", async (req, res) => {
   try {
     const { code, state, error, error_description } = req.query;
-    if (error)
-      return res.status(400).send(`OAuth error: ${error} - ${error_description || ""}`);
-    if (!code || !state) return res.status(400).send("Missing code/state");
-    if (!req.session.oauth_state || state !== req.session.oauth_state)
-      return res.status(400).send("Invalid state (CSRF check failed)");
-    if (!req.session.pkce?.verifier) return res.status(400).send("Missing PKCE verifier");
+    if (error) throw new Error(`${error} — ${error_description}`);
+    if (!code || !state) throw new Error("Missing code or state");
+    if (state !== req.session.oauth_state) throw new Error("Invalid state (CSRF)");
 
     const tokenUrl = "https://api.x.com/2/oauth2/token";
     const body = new URLSearchParams({
@@ -152,7 +149,7 @@ app.get("/callback", async (req, res) => {
     const me = await axios.get("https://api.x.com/2/users/me", {
       headers: { Authorization: `Bearer ${req.session.tokens.access_token}` }
     });
-    req.session.user = me.data?.data || null;
+    req.session.user = me.data?.data;
 
     delete req.session.oauth_state;
     delete req.session.pkce;
@@ -160,18 +157,12 @@ app.get("/callback", async (req, res) => {
     res.redirect("/dashboard");
   } catch (e) {
     console.error("Callback error:", e.response?.data || e.message);
-    res
-      .status(500)
-      .send(
-        `Callback error: ${
-          e.response?.data ? JSON.stringify(e.response.data) : e.message
-        }`
-      );
+    res.status(500).send(`Callback error: ${e.message}`);
   }
 });
 
 // =====================================================
-// ✉️ POST TWEET (opsional, tetap dipertahankan)
+// ✉️ POST TWEET (opsional)
 // =====================================================
 app.post("/tweet", ensureAuth, async (req, res) => {
   try {
@@ -188,18 +179,19 @@ app.post("/tweet", ensureAuth, async (req, res) => {
 });
 
 // =====================================================
-// 🧭 API: LIST TWEETS (paged) untuk DataTables lazy-load
+// 🧭 API: LIST TWEETS
 // =====================================================
 app.get("/tweets/list", ensureAuth, async (req, res) => {
   try {
     const access_token = req.session.tokens?.access_token;
     const userId = req.session.user?.id;
-    if (!access_token || !userId) return res.status(401).json({ error: "Not authenticated" });
+    if (!access_token || !userId)
+      return res.status(401).json({ error: "Not authenticated" });
 
     const { cursor = "", max = "100" } = req.query;
     const url = new URL(`https://api.x.com/2/users/${userId}/tweets`);
-    url.searchParams.set("max_results", String(Math.min(parseInt(max, 10) || 100, 100)));
-    url.searchParams.set("tweet.fields", "created_at,public_metrics,attachments,possibly_sensitive,source");
+    url.searchParams.set("max_results", Math.min(parseInt(max) || 100, 100));
+    url.searchParams.set("tweet.fields", "created_at,public_metrics");
     if (cursor) url.searchParams.set("pagination_token", cursor);
 
     const r = await axios.get(url.toString(), {
@@ -208,6 +200,7 @@ app.get("/tweets/list", ensureAuth, async (req, res) => {
 
     const data = r.data?.data || [];
     const meta = r.data?.meta || {};
+
     res.json({
       ok: true,
       tweets: data,
@@ -215,7 +208,8 @@ app.get("/tweets/list", ensureAuth, async (req, res) => {
       result_count: meta.result_count || 0
     });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.response?.data || e.message });
+    console.error("tweets/list error:", e.response?.data || e.message);
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
@@ -234,9 +228,10 @@ app.post("/tweets/:id/delete", ensureAuth, async (req, res) => {
 
     res.json({ ok: true, id });
   } catch (e) {
-    const status = e.response?.status;
-    const payload = e.response?.data || e.message;
-    res.status(status || 500).json({ ok: false, error: payload });
+    console.error("delete error:", e.response?.data || e.message);
+    res
+      .status(e.response?.status || 500)
+      .json({ ok: false, error: e.response?.data || e.message });
   }
 });
 
@@ -248,8 +243,8 @@ app.post("/logout", (req, res) => {
 });
 
 // =====================================================
-// START
+// 🚀 START
 // =====================================================
 app.listen(PORT, () =>
-  console.log(`✅ Server running at ${BASE_URL} (PORT ${PORT})`)
+  console.log(`✅ Server running on ${BASE_URL} (PORT ${PORT})`)
 );
