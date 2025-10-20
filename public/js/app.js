@@ -22,20 +22,33 @@ $(function () {
   let nextToken = null;
   let loadedTweets = 0;
 
+  const elLoaded = $('#stat-loaded');
+  const elHasMore = $('#stat-has-more');
+  const btnLoadMore = $('#btn-load-more');
+  const btnRefresh = $('#btn-refresh');
+  const tableContainer = $('#tweetsTable').closest('.table-responsive');
+
   // =========================================================
   // 🧊 Utility
   // =========================================================
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, m => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[m]));
-  }
+  const escapeHtml = s => String(s).replace(/[&<>"']/g, m => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[m]));
 
-  const fmtDate = (iso) => {
-    if (!iso) return "";
-    const d = new Date(iso);
-    return d.toLocaleString();
+  const fmtDate = iso => iso ? new Date(iso).toLocaleString() : "";
+
+  const showLoadingOverlay = (text = "Memuat...") => {
+    const overlay = `
+      <div id="loading-overlay" class="position-absolute w-100 h-100 d-flex align-items-center justify-content-center"
+           style="top:0; left:0; background:rgba(0,0,0,0.4); backdrop-filter:blur(4px); z-index:10;">
+        <div class="text-center text-light">
+          <div class="spinner-border text-info mb-3" role="status"></div>
+          <div class="fw-semibold">${text}</div>
+        </div>
+      </div>`;
+    tableContainer.css('position', 'relative').append(overlay);
   };
+  const hideLoadingOverlay = () => $('#loading-overlay').remove();
 
   // =========================================================
   // 🪄 Delete All Tweets (Progress Modal)
@@ -61,55 +74,50 @@ $(function () {
       showCancelButton: true,
       cancelButtonText: 'Tutup',
       didOpen: () => Swal.showLoading(),
-      willClose: () => {
-        if (pollTimer) clearInterval(pollTimer);
-      }
+      willClose: () => pollTimer && clearInterval(pollTimer)
     });
   }
 
-  function updateBar(deleted, total) {
+  const updateBar = (deleted, total) => {
     const pct = total ? Math.floor((deleted / total) * 100) : 0;
     $('#swal-deleted').text(deleted);
     $('#swal-percent').text(pct);
     $('#swal-bar').css('width', pct + '%');
-  }
+  };
 
-  function beginPolling() {
+  const beginPolling = () => {
     pollTimer = setInterval(async () => {
       if (!currentJobId) return;
       try {
         const st = await $.getJSON('/delete/status', { jobId: currentJobId });
         if (!st.ok) return;
-
         updateBar(st.deleted, st.total);
 
         if (st.status === 'waiting_limit') {
-          $('#swal-bar').removeClass('bg-danger').addClass('bg-warning');
-          $('#swal-waiting').text('⏳ Menunggu reset limit Twitter... akan dilanjutkan otomatis.');
+          $('#swal-bar').removeClass('bg-info').addClass('bg-warning');
+          $('#swal-waiting').text('⏳ Rate limit — menunggu reset otomatis...');
           return;
-        } else {
-          $('#swal-waiting').text('');
-          $('#swal-bar').removeClass('bg-warning').addClass('bg-info');
         }
+        $('#swal-waiting').text('');
 
         if (['done', 'error', 'canceled'].includes(st.status)) {
-          clearInterval(pollTimer); pollTimer = null; currentJobId = null;
+          clearInterval(pollTimer);
+          currentJobId = null;
           Swal.close();
-          const icon = st.status === 'done' ? 'success' :
-                       st.status === 'error' ? 'error' : 'info';
-          const title = st.status === 'done' ? 'Selesai' :
-                        st.status === 'error' ? 'Gagal' : 'Dibatalkan';
+          const icon = st.status === 'done' ? 'success'
+                     : st.status === 'error' ? 'error' : 'info';
+          const title = st.status === 'done' ? 'Selesai'
+                      : st.status === 'error' ? 'Gagal' : 'Dibatalkan';
           const html = st.status === 'error'
             ? `<pre class="text-start small">${escapeHtml(JSON.stringify(st.error, null, 2))}</pre>`
             : `<div class="text-start">Terhapus <b>${st.deleted}</b> dari <b>${st.total}</b> tweet.</div>`;
           Swal.fire({ icon, title, html, confirmButtonText: 'OK' });
         }
-      } catch (err) {
-        console.log('poll error', err);
-      }
+      } catch (err) { console.log('poll error', err); }
     }, 1500);
-  }
+  };
 
+  // Delete All
   $('#btnDeleteAll').on('click', async function () {
     const conf = await Swal.fire({
       title: 'Yakin hapus semua tweet?',
@@ -123,17 +131,15 @@ $(function () {
 
     try {
       const start = await $.post('/delete/start');
-      if (!start.ok) {
-        return Swal.fire({ icon: 'error', title: 'Gagal', text: start.error || 'Tidak bisa memulai job' });
-      }
-      if (!start.jobId) {
-        return Swal.fire({ icon: 'info', title: 'Tidak ada tweet', text: 'Akun ini tidak memiliki tweet untuk dihapus.' });
-      }
+      if (!start.ok) throw new Error(start.error || 'Gagal memulai job');
+      if (!start.jobId)
+        return Swal.fire('Info', 'Akun ini tidak memiliki tweet untuk dihapus.', 'info');
+
       currentJobId = start.jobId;
       openProgressModal(start.total);
       beginPolling();
     } catch (err) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: err.responseJSON?.error || err.statusText || 'Error' });
+      Swal.fire('Gagal', err.responseJSON?.error || err.statusText || 'Error', 'error');
     }
   });
 
@@ -145,14 +151,9 @@ $(function () {
   });
 
   // =========================================================
-  // 🧮 DataTables Tweet List (Load & Delete per Tweet)
+  // 🧮 DataTables Tweet List
   // =========================================================
-  const elLoaded = $('#stat-loaded');
-  const elHasMore = $('#stat-has-more');
-  const btnLoadMore = $('#btn-load-more');
-  const btnRefresh = $('#btn-refresh');
-
-  function initDataTable() {
+  const initDataTable = () => {
     if (dt) return dt;
     dt = $('#tweetsTable').DataTable({
       pageLength: 10,
@@ -162,16 +163,22 @@ $(function () {
         { targets: [0], visible: true },
         { targets: [3, 4, 5, 6], className: 'text-end', width: '70px' },
         { targets: -1, orderable: false, searchable: false, width: '100px' }
-      ]
+      ],
+      language: {
+        emptyTable: "Tidak ada tweet untuk ditampilkan",
+        info: "Menampilkan _START_–_END_ dari _TOTAL_ tweet",
+        paginate: { previous: "‹", next: "›" }
+      }
     });
     return dt;
-  }
+  };
 
   async function loadTweets(cursor = "") {
     btnLoadMore.prop('disabled', true).text('Loading...');
+    showLoadingOverlay("Mengambil data tweet...");
     try {
       const res = await $.getJSON('/tweets/list', { cursor, max: 100 });
-      if (!res.ok) throw new Error(res.error || 'Failed to load tweets');
+      if (!res.ok) throw new Error(res.error || 'Gagal memuat tweet');
 
       const data = res.tweets || [];
       const table = initDataTable();
@@ -180,15 +187,20 @@ $(function () {
         return [
           t.id,
           fmtDate(t.created_at),
-          escapeHtml(t.text || ''),
+          `<div class='tweet-text'>${escapeHtml(t.text || '')}</div>`,
           m.like_count ?? 0,
           m.retweet_count ?? 0,
           m.reply_count ?? 0,
           m.quote_count ?? 0,
-          `<button class="btn btn-sm btn-danger btn-delete" data-id="${t.id}"><i class="fa-solid fa-trash"></i></button>`
+          `<button class="btn btn-sm btn-danger btn-delete" data-id="${t.id}" title="Hapus tweet ini">
+             <i class="fa-solid fa-trash"></i>
+           </button>`
         ];
       });
       table.rows.add(rows).draw(false);
+
+      // Animasi baris baru fade-in
+      $('#tweetsTable tbody tr').addClass('fadein');
 
       loadedTweets += rows.length;
       elLoaded.text(loadedTweets);
@@ -198,6 +210,7 @@ $(function () {
     } catch (e) {
       Swal.fire('Error', e.message || 'Gagal memuat tweet', 'error');
     } finally {
+      hideLoadingOverlay();
       btnLoadMore.prop('disabled', false).text('Load More');
     }
   }
@@ -229,7 +242,9 @@ $(function () {
     }
   }
 
-  // Buttons
+  // =========================================================
+  // Buttons & Events
+  // =========================================================
   btnLoadMore.on('click', () => loadTweets(nextToken || ""));
   btnRefresh.on('click', () => {
     if (dt) dt.clear().draw();
@@ -240,11 +255,10 @@ $(function () {
     loadTweets("");
   });
 
-  // Delegate delete
   $(document).on('click', '.btn-delete', function () {
     deleteTweet($(this).data('id'), $(this));
   });
 
-  // Auto load first batch
+  // Auto load
   if ($('#tweetsTable').length) loadTweets("");
 });
