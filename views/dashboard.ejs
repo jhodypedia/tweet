@@ -1,28 +1,84 @@
-<section class="container py-5" data-animate="fade-up">
-  <div class="card glassy p-4 shadow-lg border-0">
-    <div class="d-flex align-items-center mb-4">
-      <img src="https://unavatar.io/x/<%= user.username %>" class="rounded-circle me-3" width="70" height="70">
-      <div>
+<section class="min-vh-100 d-flex align-items-center justify-content-center" 
+         style="background: linear-gradient(135deg, #1da1f2 0%, #15202b 100%); background-size: cover;">
+
+  <div class="container py-5">
+    <div class="card shadow-lg border-0 rounded-4 overflow-hidden" 
+         style="backdrop-filter: blur(15px); background: rgba(255,255,255,0.15);">
+
+      <!-- === Header / Profile === -->
+      <div class="p-4 text-white text-center border-bottom border-light">
+        <img src="<%= user.profile_image_url %>" 
+             class="rounded-circle border border-3 border-light shadow-sm mb-3" 
+             width="90" height="90" alt="@<%= user.username %>">
         <h4 class="fw-bold mb-1">@<%= user.username %></h4>
-        <div class="text-muted small">ID: <%= user.id %></div>
+        <div class="text-light opacity-75 small">User ID: <%= user.id %></div>
       </div>
-    </div>
 
-    <div class="alert alert-info text-center">
-      <i class="fa-solid fa-circle-info me-1"></i> Pastikan akun kamu memiliki izin menulis & menghapus tweet.
-    </div>
+      <!-- === Info Alert === -->
+      <div class="alert alert-info rounded-0 text-center mb-0">
+        <i class="fa-solid fa-circle-info me-1"></i>
+        Pastikan akun kamu memiliki izin menulis & menghapus tweet.
+      </div>
 
-    <div class="text-center my-4">
-      <button id="btnDeleteAll" class="btn btn-danger btn-lg px-4 shadow-sm">
-        <i class="fa-solid fa-trash me-2"></i> Hapus Semua Tweet
-      </button>
-      <button id="btnCancel" class="btn btn-outline-secondary btn-lg ms-2 px-4" disabled>
-        <i class="fa-solid fa-ban me-2"></i> Batalkan
-      </button>
-    </div>
+      <!-- === Controls === -->
+      <div class="p-4 text-center">
+        <button id="btnDeleteAll" class="btn btn-danger btn-lg px-4 shadow-sm" disabled>
+          <i class="fa-solid fa-trash me-2"></i> Hapus Semua Tweet
+        </button>
+        <button id="btnCancel" class="btn btn-outline-light btn-lg ms-2 px-4" disabled>
+          <i class="fa-solid fa-ban me-2"></i> Batalkan
+        </button>
+      </div>
 
-    <div class="mt-5 text-center small text-muted">
-      <i class="fa-solid fa-shield-halved me-1"></i> Aman — data disimpan di sesi browser kamu.
+      <!-- === Tweets Table === -->
+      <div class="bg-white p-4 rounded-top-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap mb-3">
+          <h5 class="fw-bold mb-2"><i class="fa-brands fa-x-twitter me-2"></i>Daftar Tweet</h5>
+          <div class="d-flex gap-2">
+            <button id="btn-load-more" class="btn btn-primary btn-sm">
+              <i class="fa-solid fa-rotate me-1"></i> Load More
+            </button>
+            <button id="btn-refresh" class="btn btn-outline-secondary btn-sm">
+              <i class="fa-solid fa-arrows-rotate me-1"></i> Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="row text-center g-3 mb-3">
+          <div class="col-6 col-md-3">
+            <div class="p-2 border rounded small">
+              <div class="text-muted">Loaded Tweets</div>
+              <div id="stat-loaded" class="fs-5 fw-bold">0</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="p-2 border rounded small">
+              <div class="text-muted">Has More?</div>
+              <div id="stat-has-more" class="fs-5 fw-bold">-</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="table-responsive">
+          <table id="tweetsTable" class="table table-striped table-hover w-100 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>ID</th>
+                <th>Tanggal</th>
+                <th>Konten</th>
+                <th>Likes</th>
+                <th>Retweets</th>
+                <th>Replies</th>
+                <th>Quotes</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 </section>
