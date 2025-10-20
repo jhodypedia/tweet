@@ -1,5 +1,5 @@
 // =====================================================
-// 🐦 X / Twitter OAuth2 PKCE + Delete per Tweet (DataTable)
+// 🐦 X / Twitter OAuth2 PKCE + Delete per Tweet & Delete All
 // Node.js + Express + EJS + express-ejs-layouts
 // =====================================================
 
@@ -21,7 +21,8 @@ const {
   X_CLIENT_ID,
   X_REDIRECT_URI = `${BASE_URL}/callback`,
   X_SCOPES = "tweet.read tweet.write users.read offline.access",
-  SESSION_SECRET = "change-this-super-secret"
+  SESSION_SECRET = "change-this-super-secret",
+  X_API_BASE = "https://api.twitter.com" // default aman
 } = process.env;
 
 if (!X_CLIENT_ID) {
@@ -39,7 +40,6 @@ app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 app.use(expressLayouts);
 app.set("layout", "layout");
-
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use("/public", express.static(path.join(__dirname, "public")));
@@ -69,12 +69,17 @@ const sha256 = (str) => crypto.createHash("sha256").update(str).digest();
 const genVerifier = () => b64url(crypto.randomBytes(32));
 const toChallengeS256 = (verifier) => b64url(sha256(verifier));
 const newState = () => b64url(crypto.randomBytes(16));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ===== JOB STORE =====
+const jobs = new Map();
 
 // ===== MIDDLEWARE =====
 const ensureAuth = (req, res, next) => {
   if (req.session?.tokens?.access_token) return next();
   res.redirect("/");
 };
+
 app.use((req, res, next) => {
   res.locals.title = "X Tools — PansaGroup";
   next();
@@ -134,7 +139,7 @@ app.get("/callback", async (req, res) => {
       return res.status(400).send("Invalid state (CSRF check failed)");
     if (!req.session.pkce?.verifier) return res.status(400).send("Missing PKCE verifier");
 
-    const tokenUrl = "https://api.twitter.com/2/oauth2/token";
+    const tokenUrl = `${X_API_BASE}/2/oauth2/token`;
     const body = new URLSearchParams({
       grant_type: "authorization_code",
       code,
@@ -150,7 +155,7 @@ app.get("/callback", async (req, res) => {
     req.session.tokens = tokenResp.data;
 
     const me = await axios.get(
-      "https://api.twitter.com/2/users/me?user.fields=profile_image_url",
+      `${X_API_BASE}/2/users/me?user.fields=profile_image_url`,
       { headers: { Authorization: `Bearer ${req.session.tokens.access_token}` } }
     );
     req.session.user = me.data?.data || null;
@@ -172,24 +177,7 @@ app.get("/callback", async (req, res) => {
 });
 
 // =====================================================
-// ✉️ POST TWEET (opsional)
-// =====================================================
-app.post("/tweet", ensureAuth, async (req, res) => {
-  try {
-    const text = req.body?.text || "Hello from X PKCE demo!";
-    const r = await axios.post(
-      "https://api.twitter.com/2/tweets",
-      { text },
-      { headers: { Authorization: `Bearer ${req.session.tokens.access_token}` } }
-    );
-    res.json(r.data);
-  } catch (e) {
-    res.status(500).json({ error: e.response?.data || e.message });
-  }
-});
-
-// =====================================================
-// 🧭 API: LIST TWEETS (paged) untuk DataTables
+// 🧭 API: LIST TWEETS
 // =====================================================
 app.get("/tweets/list", ensureAuth, async (req, res) => {
   try {
@@ -199,7 +187,7 @@ app.get("/tweets/list", ensureAuth, async (req, res) => {
       return res.status(401).json({ error: "Not authenticated" });
 
     const { cursor = "", max = "100" } = req.query;
-    const url = new URL(`https://api.twitter.com/2/users/${userId}/tweets`);
+    const url = new URL(`${X_API_BASE}/2/users/${userId}/tweets`);
     url.searchParams.set("max_results", String(Math.min(parseInt(max, 10) || 100, 100)));
     url.searchParams.set(
       "tweet.fields",
@@ -221,30 +209,100 @@ app.get("/tweets/list", ensureAuth, async (req, res) => {
       result_count: meta.result_count || 0
     });
   } catch (e) {
+    const status = e.response?.status || 500;
+    if (status === 429) {
+      console.warn("⚠️ Rate limit hit. Please wait.");
+      return res.status(429).json({
+        ok: false,
+        error: "Rate limit dari Twitter/X — tunggu beberapa menit lalu coba lagi."
+      });
+    }
     console.error("❌ /tweets/list error:", e.response?.data || e.message);
-    res.status(500).json({ ok: false, error: e.response?.data || e.message });
+    res.status(status).json({ ok: false, error: e.response?.data || e.message });
   }
 });
 
 // =====================================================
-// 🗑 API: DELETE PER TWEET
+// 🗑 DELETE PER TWEET
 // =====================================================
 app.post("/tweets/:id/delete", ensureAuth, async (req, res) => {
   try {
-    const access_token = req.session.tokens?.access_token;
     const { id } = req.params;
+    const access_token = req.session.tokens?.access_token;
     if (!access_token) return res.status(401).json({ error: "Not authenticated" });
 
-    await axios.delete(`https://api.twitter.com/2/tweets/${id}`, {
+    await axios.delete(`${X_API_BASE}/2/tweets/${id}`, {
       headers: { Authorization: `Bearer ${access_token}` }
     });
 
     res.json({ ok: true, id });
   } catch (e) {
-    const status = e.response?.status;
-    const payload = e.response?.data || e.message;
-    console.error("❌ Delete tweet error:", payload);
-    res.status(status || 500).json({ ok: false, error: payload });
+    const status = e.response?.status || 500;
+    console.error("❌ Delete tweet error:", e.response?.data || e.message);
+    res.status(status).json({ ok: false, error: e.response?.data || e.message });
+  }
+});
+
+// =====================================================
+// 💣 DELETE ALL TWEETS (loop + rate limit aware)
+// =====================================================
+app.post("/delete/start", ensureAuth, async (req, res) => {
+  try {
+    const access_token = req.session.tokens?.access_token;
+    const userId = req.session.user?.id;
+    if (!access_token || !userId)
+      return res.status(401).json({ error: "Not authenticated" });
+
+    let nextToken = null;
+    const ids = [];
+
+    for (let i = 0; i < 10; i++) {
+      const url = new URL(`${X_API_BASE}/2/users/${userId}/tweets`);
+      url.searchParams.set("max_results", "100");
+      url.searchParams.set("tweet.fields", "id");
+      if (nextToken) url.searchParams.set("pagination_token", nextToken);
+
+      const r = await axios.get(url.toString(), {
+        headers: { Authorization: `Bearer ${access_token}` }
+      });
+
+      const chunk = r.data?.data || [];
+      ids.push(...chunk.map((t) => t.id));
+      nextToken = r.data?.meta?.next_token || null;
+      if (!nextToken) break;
+      await sleep(1000);
+    }
+
+    if (!ids.length)
+      return res.json({ ok: true, message: "Tidak ada tweet untuk dihapus." });
+
+    const jobId = b64url(crypto.randomBytes(12));
+    const job = { jobId, total: ids.length, deleted: 0, status: "running" };
+    jobs.set(jobId, job);
+
+    (async () => {
+      for (const id of ids) {
+        try {
+          await axios.delete(`${X_API_BASE}/2/tweets/${id}`, {
+            headers: { Authorization: `Bearer ${access_token}` }
+          });
+          job.deleted++;
+          await sleep(2000);
+        } catch (e) {
+          const status = e.response?.status;
+          if (status === 429) {
+            console.log("⏳ Rate limit — tunggu 15 menit...");
+            await sleep(15 * 60 * 1000);
+            continue;
+          }
+        }
+      }
+      job.status = "done";
+    })();
+
+    res.json({ ok: true, jobId, total: ids.length });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.response?.data || e.message });
   }
 });
 
@@ -259,5 +317,5 @@ app.post("/logout", (req, res) => {
 // START
 // =====================================================
 app.listen(PORT, () =>
-  console.log(`✅ Server running at ${BASE_URL} (PORT ${PORT})`)
+  console.log(`✅ Server running at ${BASE_URL} (PORT ${PORT}) — API: ${X_API_BASE}`)
 );
